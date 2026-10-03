@@ -88,10 +88,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <div>
               <p className="font-bold text-slate-500 uppercase tracking-wider mb-1">ข้อมูลการโอนเงิน</p>
               <p className="text-slate-700">โอนเข้า: <strong className="text-sky-800">ธ.กรุงไทย 8420786446</strong></p>
+              <p className="text-slate-700">ธนาคาร/ช่องทาง: <span className="font-medium text-slate-800">{transaction.bankName || 'ธ.กรุงไทย'}</span></p>
               <p className="text-slate-700 font-mono text-[11px]">รหัสอ้างอิง: {transaction.transactionRef}</p>
+              {transaction.aiNotes && (
+                <p className="text-slate-600 text-[11px]">บันทึก: {transaction.aiNotes}</p>
+              )}
               <p className="text-teal-700 flex items-center gap-1 mt-1 font-semibold">
                 <CheckCircle className="w-3.5 h-3.5" />
-                ตรวจสอบสลิปผ่าน AI อัตโนมัติ
+                บันทึกยอดชำระเงินเรียบร้อย
               </p>
             </div>
           </div>

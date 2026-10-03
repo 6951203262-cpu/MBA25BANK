@@ -265,33 +265,52 @@ export default function App() {
     setBills(updatedBills);
     setTransactions((prev) => [newTransaction, ...prev]);
     setMembers(updatedMembers);
+    setViewingReceiptTxn(newTransaction);
 
     logAudit('PAYMENT_APPROVED', `อนุมัติตัดยอดชำระ MBA25 BANK ฿${data.amount} ของ ${targetBill.memberName} (Ref: ${data.transactionRef})`);
     triggerCloudBackup();
   };
 
-  const handleDirectPayBill = (bill: Bill) => {
+  const handleDirectPayBill = (
+    bill: Bill, 
+    paymentDetails?: {
+      paidAt?: string;
+      bankName?: string;
+      senderAccount?: string;
+      transactionRef?: string;
+      slipImage?: string;
+      note?: string;
+    }
+  ) => {
+    const now = new Date();
+    const paidAtStr = paymentDetails?.paidAt || now.toISOString().replace('T', ' ').slice(0, 19);
+    const transRef = paymentDetails?.transactionRef || `KTB8420786446-${now.getTime().toString().slice(-6)}`;
+    const bank = paymentDetails?.bankName || 'ธนาคารกรุงไทย (KTB)';
+    const sender = paymentDetails?.senderAccount || bill.memberName;
+    const slip = paymentDetails?.slipImage || '';
+    const note = paymentDetails?.note || `ชำระเงินโอนเข้าบัญชี MBA25 BANK ธ.กรุงไทย 8420786446 เรียบร้อย`;
+
     handleApprovePayment({
       billId: bill.id,
       amount: bill.amount,
-      transactionRef: `KTB8420786446-${Date.now().toString().slice(-6)}`,
-      bankName: 'ธนาคารกรุงไทย (8420786446)',
-      paidAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
-      slipImage: '',
+      transactionRef: transRef,
+      bankName: bank,
+      paidAt: paidAtStr,
+      slipImage: slip,
       ocrResult: {
         isValidSlip: true,
-        bankName: 'ธนาคารกรุงไทย',
-        transferDate: new Date().toISOString().split('T')[0],
-        transferTime: new Date().toTimeString().split(' ')[0],
+        bankName: bank,
+        transferDate: paidAtStr.split(' ')[0] || now.toISOString().split('T')[0],
+        transferTime: paidAtStr.split(' ')[1] || now.toTimeString().split(' ')[0],
         amount: bill.amount,
         senderName: bill.memberName,
-        senderAccount: 'บัญชีสมาชิก',
+        senderAccount: sender,
         receiverName: 'MBA25 BANK',
         receiverAccount: '8420786446',
-        transactionRef: `KTB8420786446-${Date.now().toString().slice(-6)}`,
-        qrDetected: false,
+        transactionRef: transRef,
+        qrDetected: !!slip,
         confidence: 100,
-        summaryRemarks: 'ชำระเงินโอนเข้าบัญชี MBA25 BANK ธ.กรุงไทย 8420786446 สำเร็จ',
+        summaryRemarks: note,
       },
       sendLineNotify: false,
     });
@@ -549,6 +568,8 @@ export default function App() {
               onRequireAdmin={() => setIsAdminLockModalOpen(true)}
               onCreateBill={handleCreateBill}
               onConfirmPayment={handleDirectPayBill}
+              initialPayingBill={selectedBillForSlip}
+              onClearInitialPayingBill={() => setSelectedBillForSlip(null)}
             />
           )}
 

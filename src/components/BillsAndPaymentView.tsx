@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CreditCard, 
   PlusCircle, 
@@ -19,6 +19,15 @@ import {
 import { Bill, Member, SystemConfig } from '../types';
 import { ROOM_MONTHS, MONTHLY_RATE } from '../utils/mockData';
 
+export interface PaymentDetails {
+  paidAt?: string;
+  bankName?: string;
+  senderAccount?: string;
+  transactionRef?: string;
+  slipImage?: string;
+  note?: string;
+}
+
 interface BillsAndPaymentViewProps {
   bills: Bill[];
   members: Member[];
@@ -33,7 +42,9 @@ interface BillsAndPaymentViewProps {
     dueDate: string;
     targetMemberIds: string[];
   }) => void;
-  onConfirmPayment: (bill: Bill) => void;
+  onConfirmPayment: (bill: Bill, details?: PaymentDetails) => void;
+  initialPayingBill?: Bill | null;
+  onClearInitialPayingBill?: () => void;
 }
 
 export const BillsAndPaymentView: React.FC<BillsAndPaymentViewProps> = ({
@@ -44,6 +55,8 @@ export const BillsAndPaymentView: React.FC<BillsAndPaymentViewProps> = ({
   onRequireAdmin,
   onCreateBill,
   onConfirmPayment,
+  initialPayingBill,
+  onClearInitialPayingBill,
 }) => {
   const [activeTab, setActiveTab] = useState<'PENDING' | 'PAID' | 'ALL'>('PENDING');
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('ALL');
@@ -52,6 +65,16 @@ export const BillsAndPaymentView: React.FC<BillsAndPaymentViewProps> = ({
   const [payingBill, setPayingBill] = useState<Bill | null>(null);
   const [copiedAccount, setCopiedAccount] = useState(false);
 
+  // Payment Recording Form State
+  const [payDate, setPayDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [payTime, setPayTime] = useState(() => new Date().toTimeString().slice(0, 5));
+  const [payBank, setPayBank] = useState('ธนาคารกรุงไทย (KTB)');
+  const [paySender, setPaySender] = useState('');
+  const [payRef, setPayRef] = useState('');
+  const [payNote, setPayNote] = useState('');
+  const [paySlipImage, setPaySlipImage] = useState<string>('');
+  const [isUploadingSlip, setIsUploadingSlip] = useState(false);
+
   // Create Bill Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedRoomMonth, setSelectedRoomMonth] = useState(ROOM_MONTHS[0].name);
@@ -59,6 +82,67 @@ export const BillsAndPaymentView: React.FC<BillsAndPaymentViewProps> = ({
   const [billDueDate, setBillDueDate] = useState(ROOM_MONTHS[0].dueDate);
   const [billTargetType, setBillTargetType] = useState<'ALL' | 'SPECIFIC'>('ALL');
   const [selectedMemberId, setSelectedMemberId] = useState<string>(members[0]?.id || '');
+
+  const handleOpenPayModal = (bill: Bill) => {
+    setPayingBill(bill);
+    const now = new Date();
+    setPayDate(now.toISOString().split('T')[0]);
+    setPayTime(now.toTimeString().slice(0, 5));
+    setPayBank('ธนาคารกรุงไทย (KTB)');
+    setPaySender(bill.memberName);
+    setPayRef(`KTB8420786446-${now.getTime().toString().slice(-6)}`);
+    setPayNote(`ชำระยอด ${bill.title}`);
+    setPaySlipImage('');
+    setCopiedAccount(false);
+  };
+
+  useEffect(() => {
+    if (initialPayingBill) {
+      handleOpenPayModal(initialPayingBill);
+      if (onClearInitialPayingBill) onClearInitialPayingBill();
+    }
+  }, [initialPayingBill]);
+
+  const handleSlipFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('รูปภาพมีขนาดใหญ่เกิน 10MB กรุณาเลือกไฟล์ใหม่อีกครั้ง');
+      return;
+    }
+
+    setIsUploadingSlip(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPaySlipImage(reader.result as string);
+      setIsUploadingSlip(false);
+    };
+    reader.onerror = () => {
+      setIsUploadingSlip(false);
+      alert('ไม่สามารถอ่านไฟล์รูปภาพได้');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmPaymentSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!payingBill) return;
+
+    const fullPaidAt = `${payDate} ${payTime}:00`;
+    const details: PaymentDetails = {
+      paidAt: fullPaidAt,
+      bankName: payBank,
+      senderAccount: paySender.trim() || payingBill.memberName,
+      transactionRef: payRef.trim() || `KTB8420786446-${Date.now().toString().slice(-6)}`,
+      slipImage: paySlipImage,
+      note: payNote.trim(),
+    };
+
+    const targetBill = payingBill;
+    setPayingBill(null);
+    onConfirmPayment(targetBill, details);
+  };
 
   // Filter bills
   const filteredBills = bills.filter((b) => {
@@ -305,7 +389,7 @@ export const BillsAndPaymentView: React.FC<BillsAndPaymentViewProps> = ({
               <div className="mt-4 pt-3 border-t border-slate-100">
                 {!isPaid ? (
                   <button
-                    onClick={() => setPayingBill(bill)}
+                    onClick={() => handleOpenPayModal(bill)}
                     className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-600 hover:to-cyan-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
                   >
                     <CreditCard className="w-3.5 h-3.5" />
@@ -401,30 +485,155 @@ export const BillsAndPaymentView: React.FC<BillsAndPaymentViewProps> = ({
             <div className="mt-4 p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-[11px] text-slate-600 space-y-1 leading-relaxed">
               <p className="font-bold text-slate-700">ขั้นตอนการชำระเงิน:</p>
               <p>1. โอนเงินผ่านแอปธนาคารของคุณเข้าบัญชี <strong>กรุงไทย 8420786446</strong> ยอด ฿{payingBill.amount.toLocaleString()}</p>
-              <p>2. เมื่อโอนเงินเรียบร้อยแล้ว แตะปุ่มยืนยันด้านล่างเพื่อตัดยอดบิลทันที</p>
+              <p>2. ตรวจสอบหรือระบุข้อมูลการโอนเงินด้านล่าง แล้วกด <strong>"บันทึกข้อมูลและยืนยันการชำระเงิน"</strong> เพื่อออกใบเสร็จและตัดยอดทันที</p>
             </div>
 
-            {/* Confirmation CTA */}
-            <div className="mt-5 space-y-2">
-              <button
-                onClick={() => {
-                  const billToPay = payingBill;
-                  setPayingBill(null);
-                  onConfirmPayment(billToPay);
-                }}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-teal-200 transition-all cursor-pointer"
-              >
-                <CheckCircle className="w-4 h-4" />
-                โอนเงินเรียบร้อยแล้ว ยืนยันการชำระเงิน (ตัดยอดทันที)
-              </button>
+            {/* Payment Recording Form */}
+            <form onSubmit={handleConfirmPaymentSubmit} className="mt-4 space-y-3 pt-3 border-t border-slate-100 text-xs text-slate-700">
+              <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
+                <FileCheck2 className="w-4 h-4 text-teal-600" />
+                <span>บันทึกข้อมูลการชำระเงิน (Record Details)</span>
+              </div>
 
-              <button
-                onClick={() => setPayingBill(null)}
-                className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 cursor-pointer text-center"
-              >
-                ปิดหน้าต่าง
-              </button>
-            </div>
+              {/* Date & Time */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">วันที่โอนเงิน</label>
+                  <input
+                    type="date"
+                    required
+                    value={payDate}
+                    onChange={(e) => setPayDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">เวลาที่โอน</label>
+                  <input
+                    type="time"
+                    required
+                    value={payTime}
+                    onChange={(e) => setPayTime(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-400"
+                  />
+                </div>
+              </div>
+
+              {/* Bank & Reference */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">ธนาคาร/ช่องทางที่โอน</label>
+                  <select
+                    value={payBank}
+                    onChange={(e) => setPayBank(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-400 cursor-pointer"
+                  >
+                    <option value="ธนาคารกรุงไทย (KTB)">ธนาคารกรุงไทย (KTB)</option>
+                    <option value="ธนาคารกสิกรไทย (KBANK)">ธนาคารกสิกรไทย (KBANK)</option>
+                    <option value="ธนาคารไทยพาณิชย์ (SCB)">ธนาคารไทยพาณิชย์ (SCB)</option>
+                    <option value="ธนาคารกรุงเทพ (BBL)">ธนาคารกรุงเทพ (BBL)</option>
+                    <option value="ธนาคารกรุงศรีอยุธยา (BAY)">ธนาคารกรุงศรีอยุธยา (BAY)</option>
+                    <option value="ธนาคารทหารไทยธนชาต (TTB)">ธนาคารทหารไทยธนชาต (TTB)</option>
+                    <option value="ธนาคารออมสิน (GSB)">ธนาคารออมสิน (GSB)</option>
+                    <option value="พร้อมเพย์ (PromptPay)">พร้อมเพย์ (PromptPay)</option>
+                    <option value="เงินสด / ชำระตรง">เงินสด / ชำระตรง</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">รหัสอ้างอิงธุรกรรม / Ref</label>
+                  <input
+                    type="text"
+                    required
+                    value={payRef}
+                    onChange={(e) => setPayRef(e.target.value)}
+                    placeholder="เช่น KTB8420786446-123456"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-slate-800 focus:outline-none focus:border-teal-400"
+                  />
+                </div>
+              </div>
+
+              {/* Sender Name/Account */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">ชื่อผู้โอน / บัญชีต้นทาง</label>
+                <input
+                  type="text"
+                  value={paySender}
+                  onChange={(e) => setPaySender(e.target.value)}
+                  placeholder="ชื่อสมาชิกผู้โอน"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-400"
+                />
+              </div>
+
+              {/* Attach Slip (Optional) */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">แนบรูปภาพสลิปโอนเงิน (ถ้ามี)</label>
+                {!paySlipImage ? (
+                  <label className="flex items-center justify-center gap-2 p-2.5 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 rounded-xl cursor-pointer text-slate-600 transition-colors">
+                    <UploadCloud className="w-4 h-4 text-teal-600" />
+                    <span className="text-[11px] font-medium">
+                      {isUploadingSlip ? 'กำลังโหลดรูป...' : 'แตะเพื่อเลือกรูปภาพสลิปจากอุปกรณ์'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSlipFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-3 p-2 bg-teal-50/70 border border-teal-200 rounded-xl">
+                    <img
+                      src={paySlipImage}
+                      alt="Slip preview"
+                      className="w-12 h-12 object-cover rounded-lg border border-teal-300 shadow-2xs"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-teal-800 truncate">แนบรูปสลิปเรียบร้อยแล้ว</p>
+                      <p className="text-[10px] text-teal-600">พร้อมบันทึกลงประวัติและใบเสร็จ</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPaySlipImage('')}
+                      className="p-1 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 cursor-pointer"
+                      title="ลบรูปสลิป"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Memo / Notes */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">บันทึกช่วยจำ / หมายเหตุ</label>
+                <input
+                  type="text"
+                  value={payNote}
+                  onChange={(e) => setPayNote(e.target.value)}
+                  placeholder="เช่น โอนผ่าน KTB NEXT เวลา 14:20 น."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-teal-400"
+                />
+              </div>
+
+              {/* Confirmation CTA */}
+              <div className="pt-2 space-y-2">
+                <button
+                  type="submit"
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-teal-200 transition-all cursor-pointer"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  บันทึกข้อมูลและยืนยันการชำระเงิน (ออกใบเสร็จทันที)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPayingBill(null)}
+                  className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 cursor-pointer text-center"
+                >
+                  ยกเลิก / ปิดหน้าต่าง
+                </button>
+              </div>
+            </form>
 
           </div>
         </div>
