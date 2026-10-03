@@ -1,0 +1,6 @@
+{
+  "name": "MBA25 BANK (ธ.กรุงไทย 8420786446)",
+  "description": "ระบบจัดการชำระเงิน MBA25 BANK สมาชิก 23 คน ยอดเดือนละ 300 บาท งวดตุลาคม 2026 - มีนาคม 2028 โอนเข้าธนาคารกรุงไทย 8420786446 พร้อมระบบตรวจสลิปอัตโนมัติด้วย AI",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
